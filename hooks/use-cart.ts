@@ -8,19 +8,24 @@ export function useCart() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Load cart from localStorage on mount
-    const savedCart = localStorage.getItem("cart")
-    if (savedCart) {
-      setCart(JSON.parse(savedCart))
+    try {
+      const savedCart = typeof window !== "undefined" ? localStorage.getItem("cart") : null
+      if (savedCart) setCart(JSON.parse(savedCart))
+    } catch {
+      // si localStorage falla, seguimos con un carrito vacío
+      setCart([])
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [])
 
   useEffect(() => {
-    // Save cart to localStorage whenever it changes
     if (!isLoading) {
       localStorage.setItem("cart", JSON.stringify(cart))
+      // Notificar posibles listeners (microinteracciones)
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { count: getItemCount() } }))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, isLoading])
 
   const addItem = (product: Product, quantity = 1) => {

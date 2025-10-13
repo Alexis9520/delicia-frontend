@@ -9,9 +9,7 @@ import { Navbar } from "@/components/layout/navbar"
 import { Suspense } from "react"
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "Panadería Delicia",
 }
 
 export default function RootLayout({

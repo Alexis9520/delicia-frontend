@@ -1,74 +1,77 @@
-export interface User {
-  id: string
-  email: string
-  name: string
-  role: "cliente" | "trabajador" | "administrador"
-}
+import { jwtDecode } from "jwt-decode";
 
-export interface AuthResponse {
-  token: string
-  user: User
-}
+export type AuthResponse = {
+  token: string;
+};
+export type UserData = {
+  email: string;
+  name?: string;
+  role?: string;
+  [key: string]: any;
+};
 
-// Store token in localStorage
 export function setAuthToken(token: string) {
   if (typeof window !== "undefined") {
-    localStorage.setItem("auth_token", token)
+    localStorage.setItem("authToken", token);
   }
 }
 
-// Get token from localStorage
 export function getAuthToken(): string | null {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("auth_token")
+    return localStorage.getItem("authToken");
   }
-  return null
+  return null;
 }
 
-// Remove token from localStorage
-export function removeAuthToken() {
+export function decodeUserFromToken(token: string): UserData | null {
+  try {
+    return jwtDecode<UserData>(token);
+  } catch {
+    return null;
+  }
+}
+
+export function setUserData(user: UserData) {
   if (typeof window !== "undefined") {
-    localStorage.removeItem("auth_token")
+    localStorage.setItem("userData", JSON.stringify(user));
   }
 }
 
-// Store user data
-export function setUserData(user: User) {
+export function getUserData(): UserData | null {
   if (typeof window !== "undefined") {
-    localStorage.setItem("user_data", JSON.stringify(user))
+    const user = localStorage.getItem("userData");
+    return user ? JSON.parse(user) : null;
   }
+  return null;
 }
 
-// Get user data
-export function getUserData(): User | null {
-  if (typeof window !== "undefined") {
-    const data = localStorage.getItem("user_data")
-    return data ? JSON.parse(data) : null
-  }
-  return null
-}
-
-// Remove user data
-export function removeUserData() {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("user_data")
-  }
-}
-
-// Logout function
-export function logout() {
-  removeAuthToken()
-  removeUserData()
-  window.location.href = "/login"
-}
-
-// Check if user is authenticated
 export function isAuthenticated(): boolean {
-  return !!getAuthToken()
+  const token = getAuthToken();
+  return !!token;
 }
 
-// Check if user has specific role
-export function hasRole(role: User["role"]): boolean {
-  const user = getUserData()
-  return user?.role === role
+export function logout() {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userData");
+  }
+}
+
+// NUEVO: Obtiene el rol actual del usuario desde el JWT
+export function getCurrentUserRole(): string | null {
+  const token = getAuthToken();
+  if (!token) return null;
+  const user = decodeUserFromToken(token);
+  return user?.role ?? null; // Puede ser "ROLE_ADMIN", "ROLE_CLIENTE", etc.
+}
+
+// NUEVO: Helpers para usar en rutas protegidas o componentes
+export function isAdmin(): boolean {
+  return getCurrentUserRole() === "ROLE_ADMIN";
+}
+export function isTrabajador(): boolean {
+  return getCurrentUserRole() === "ROLE_TRABAJADOR";
+}
+export function isCliente(): boolean {
+  return getCurrentUserRole() === "ROLE_CLIENTE";
 }

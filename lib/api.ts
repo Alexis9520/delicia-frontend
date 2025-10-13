@@ -1,56 +1,114 @@
-import { getAuthToken } from "./auth"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message)
-    this.name = "ApiError"
+function getAuthHeader(): Record<string, string> {
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      return { Authorization: `Bearer ${token}` };
+    }
   }
+  return {};
 }
 
-async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const token = getAuthToken()
-
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  }
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`
-  }
-
-  const response = await fetch(`${API_BASE_URL}${url}`, {
-    ...options,
-    headers,
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Error desconocido" }))
-    throw new ApiError(response.status, error.message || "Error en la solicitud")
-  }
-
-  return response.json()
+function mergeHeaders(...headersArr: (HeadersInit | undefined)[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  headersArr.forEach((h) => {
+    if (!h) return;
+    if (h instanceof Headers) {
+      h.forEach((value, key) => {
+        result[key] = value;
+      });
+    } else if (Array.isArray(h)) {
+      h.forEach(([key, value]) => {
+        result[key] = value;
+      });
+    } else if (typeof h === "object") {
+      Object.entries(h).forEach(([key, value]) => {
+        result[key] = String(value);
+      });
+    }
+  });
+  return result;
 }
 
 export const api = {
-  get: (url: string) => fetchWithAuth(url),
-  post: (url: string, data: unknown) =>
-    fetchWithAuth(url, {
+  get: async (path: string, options: RequestInit = {}) => {
+    const headers = mergeHeaders(options.headers, getAuthHeader());
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  post: async (path: string, body: any, options: RequestInit = {}) => {
+    let headers: Record<string, string> = {};
+    let realBody: BodyInit;
+
+    if (body instanceof FormData) {
+      // No setees Content-Type (el navegador lo pone)
+      headers = mergeHeaders(options.headers, getAuthHeader());
+      realBody = body;
+    } else {
+      headers = mergeHeaders(
+        { "Content-Type": "application/json" },
+        options.headers,
+        getAuthHeader()
+      );
+      realBody = JSON.stringify(body);
+    }
+
+    const res = await fetch(`${API_URL}${path}`, {
       method: "POST",
-      body: JSON.stringify(data),
-    }),
-  put: (url: string, data: unknown) =>
-    fetchWithAuth(url, {
+      headers,
+      body: realBody,
+      credentials: "include",
+      ...options,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  put: async (path: string, body: any, options: RequestInit = {}) => {
+    let headers: Record<string, string> = {};
+    let realBody: BodyInit;
+
+    if (body instanceof FormData) {
+      headers = mergeHeaders(options.headers, getAuthHeader());
+      realBody = body;
+    } else {
+      headers = mergeHeaders(
+        { "Content-Type": "application/json" },
+        options.headers,
+        getAuthHeader()
+      );
+      realBody = JSON.stringify(body);
+    }
+
+    const res = await fetch(`${API_URL}${path}`, {
       method: "PUT",
-      body: JSON.stringify(data),
-    }),
-  delete: (url: string) =>
-    fetchWithAuth(url, {
+      headers,
+      body: realBody,
+      credentials: "include",
+      ...options,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  delete: async (path: string, options: RequestInit = {}) => {
+    const headers = mergeHeaders(options.headers, getAuthHeader());
+    const res = await fetch(`${API_URL}${path}`, {
       method: "DELETE",
-    }),
-}
+      credentials: "include",
+      headers,
+      ...options,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+};
+export { API_URL };

@@ -36,6 +36,7 @@ export interface Address {
   phone: string
 }
 
+// --- AGREGA LOS CAMPOS PARA MOSTRADOR Y ESTADÍSTICAS ---
 export interface Order {
   id: string
   userId: string
@@ -46,4 +47,19 @@ export interface Order {
   paymentMethod: string
   createdAt: string
   updatedAt: string
+
+  /** NUEVOS CAMPOS **/
+  canal?: "online" | "mostrador"
+  nombreCliente?: string
+  documentoCliente?: string
+}
+
+/** AGREGA ESTA INTERFAZ PARA USUARIOS */
+export interface User {
+  id?: string
+  email: string
+  name?: string
+  role: string
+  phone?: string
+  address?: string
 }

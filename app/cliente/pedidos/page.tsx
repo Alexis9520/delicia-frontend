@@ -1,183 +1,108 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
+import { FolderOpen, RefreshCw } from "lucide-react"
+import Link from "next/link"
+
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { OrderCard } from "@/components/orders/order-card"
-import { Spinner } from "@/components/ui/spinner"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api } from "@/lib/api"
 import type { Order } from "@/lib/types"
-import { Package } from "lucide-react"
-import Link from "next/link"
+import { api } from "@/lib/api"
+import { Button } from "@/components/ui/button"
 
 export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("todos")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchOrders = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.get("/orders")
+      const data = (res as any)?.data ?? res
+      setOrders(Array.isArray(data) ? data : [])
+    } catch {
+      setError("No se pudieron cargar los pedidos.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchOrders()
   }, [])
 
-  const fetchOrders = async () => {
-    setIsLoading(true)
-    try {
-      const response = await api.get("/orders")
-      setOrders(response)
-    } catch (error) {
-      // Mock data for development
-      setOrders([
-        {
-          id: "order-1",
-          userId: "user-1",
-          items: [
-            {
-              id: "1",
-              name: "Pan Francés",
-              description: "Pan crujiente recién horneado",
-              price: 2.5,
-              category: "panes",
-              image: "/french-bread.png",
-              stock: 20,
-              available: true,
-              quantity: 2,
-            },
-            {
-              id: "2",
-              name: "Croissant",
-              description: "Croissant de mantequilla artesanal",
-              price: 3.0,
-              category: "panes",
-              image: "/golden-croissant.png",
-              stock: 15,
-              available: true,
-              quantity: 3,
-            },
-          ],
-          total: 14.0,
-          status: "en_preparacion",
-          address: {
-            street: "Av. Principal 123",
-            city: "Ciudad de México",
-            state: "CDMX",
-            zipCode: "12345",
-            country: "México",
-            phone: "+52 123 456 7890",
-          },
-          paymentMethod: "Tarjeta de Crédito",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "order-2",
-          userId: "user-1",
-          items: [
-            {
-              id: "3",
-              name: "Pastel de Chocolate",
-              description: "Delicioso pastel de chocolate con ganache",
-              price: 25.0,
-              category: "pasteles",
-              image: "/decadent-chocolate-cake.png",
-              stock: 5,
-              available: true,
-              quantity: 1,
-            },
-          ],
-          total: 25.0,
-          status: "entregado",
-          address: {
-            street: "Calle Secundaria 456",
-            city: "Guadalajara",
-            state: "Jalisco",
-            zipCode: "44100",
-            country: "México",
-            phone: "+52 333 444 5555",
-          },
-          paymentMethod: "PayPal",
-          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-      ])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const filterOrders = (status?: Order["status"]) => {
-    if (!status) return orders
-    return orders.filter((order) => order.status === status)
-  }
-
-  const getOrdersByTab = () => {
-    switch (activeTab) {
-      case "activos":
-        return orders.filter((o) => ["pendiente", "en_preparacion", "en_camino"].includes(o.status))
-      case "completados":
-        return orders.filter((o) => o.status === "entregado")
-      case "cancelados":
-        return orders.filter((o) => o.status === "cancelado")
-      default:
-        return orders
-    }
-  }
-
-  const filteredOrders = getOrdersByTab()
-
-  if (isLoading) {
-    return (
-      <ProtectedRoute allowedRoles={["cliente"]}>
-        <div className="flex min-h-screen items-center justify-center">
-          <Spinner className="h-8 w-8" />
-        </div>
-      </ProtectedRoute>
-    )
-  }
-
   return (
-    <ProtectedRoute allowedRoles={["cliente"]}>
-      <div className="container py-8">
-        <h1 className="text-4xl font-bold mb-8">Mis Pedidos</h1>
+    <ProtectedRoute allowedRoles={["ROLE_CLIENTE"]}>
+      <main className="min-h-screen overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-50 via-rose-50 to-amber-100 dark:from-stone-900 dark:via-stone-900 dark:to-stone-950">
+        <div className="mx-auto w-full max-w-5xl px-4 py-8 md:py-12">
+          <motion.h1
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+            className="mb-6 text-balance text-4xl font-extrabold tracking-tight text-stone-900 drop-shadow-sm dark:text-stone-100 sm:text-5xl"
+          >
+            Mis pedidos
+          </motion.h1>
 
-        {orders.length === 0 ? (
-          <div className="text-center py-16">
-            <Package className="h-24 w-24 mx-auto mb-6 text-muted-foreground" />
-            <h2 className="text-2xl font-semibold mb-4">No tienes pedidos aún</h2>
-            <p className="text-muted-foreground mb-8">Comienza a explorar nuestro catálogo</p>
-            <Button asChild size="lg">
-              <Link href="/catalogo">Ver Catálogo</Link>
-            </Button>
-          </div>
-        ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-6">
-              <TabsTrigger value="todos">Todos ({orders.length})</TabsTrigger>
-              <TabsTrigger value="activos">
-                Activos ({orders.filter((o) => ["pendiente", "en_preparacion", "en_camino"].includes(o.status)).length})
-              </TabsTrigger>
-              <TabsTrigger value="completados">
-                Completados ({orders.filter((o) => o.status === "entregado").length})
-              </TabsTrigger>
-              <TabsTrigger value="cancelados">
-                Cancelados ({orders.filter((o) => o.status === "cancelado").length})
-              </TabsTrigger>
-            </TabsList>
+          {loading && (
+            <div className="grid gap-4">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-36 animate-pulse rounded-2xl border border-white/60 bg-white/70 shadow-md backdrop-blur-md dark:border-white/10 dark:bg-stone-900/50"
+                />
+              ))}
+            </div>
+          )}
 
-            <TabsContent value={activeTab}>
-              {filteredOrders.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No hay pedidos en esta categoría</p>
-              ) : (
-                <div className="grid gap-6 md:grid-cols-2">
-                  {filteredOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} />
-                  ))}
+          {!loading && error && (
+            <div className="rounded-2xl border border-white/60 bg-white/80 p-6 text-center shadow-md backdrop-blur-md dark:border-white/10 dark:bg-stone-900/60">
+              <p className="mb-4 text-stone-700 dark:text-stone-200">{error}</p>
+              <Button onClick={fetchOrders} variant="brand" className="rounded-xl">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Reintentar
+              </Button>
+            </div>
+          )}
+
+          {!loading && !error && (
+            <div className="space-y-4">
+              {orders.length === 0 ? (
+                <div className="rounded-2xl border border-white/60 bg-white/80 p-10 text-center shadow-md backdrop-blur-md dark:border-white/10 dark:bg-stone-900/60">
+                  <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                    <FolderOpen className="h-7 w-7" />
+                  </div>
+                  <p className="mb-2 text-lg font-semibold text-stone-900 dark:text-stone-100">
+                    No tienes pedidos aún
+                  </p>
+                  <p className="mb-6 text-stone-600 dark:text-stone-300">
+                    Explora el catálogo y comienza tu primer pedido.
+                  </p>
+                  <Button asChild variant="brand" className="rounded-xl">
+                    <Link href="/catalogo">Ir al catálogo</Link>
+                  </Button>
                 </div>
+              ) : (
+                orders.map((order, idx) => (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: idx * 0.04 }}
+                    className="group"
+                  >
+                    {/* Sin envolver el Card con Link externo; pasa el href al Card */}
+                    <OrderCard order={order} href={`/cliente/pedidos/${order.id}`} />
+                  </motion.div>
+                ))
               )}
-            </TabsContent>
-          </Tabs>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      </main>
     </ProtectedRoute>
   )
 }

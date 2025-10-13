@@ -89,7 +89,7 @@ export default function AdminPage() {
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["administrador"]}>
+      <ProtectedRoute allowedRoles={["ROLE_ADMIN"]}>
         <div className="flex min-h-screen items-center justify-center">
           <Spinner className="h-8 w-8" />
         </div>
@@ -98,7 +98,7 @@ export default function AdminPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["administrador"]}>
+    <ProtectedRoute allowedRoles={["ROLE_ADMIN"]}>
       <div className="max-w-7xl w-full mx-auto px-4 py-8">
         <h1 className="text-4xl font-bold mb-8">Panel de Administrador</h1>
 

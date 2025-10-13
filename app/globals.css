@@ -125,3 +125,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fade-in {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+.animate-fade-in {
+  animation: fade-in 0.7s ease;
+}
+@keyframes slide-up {
+  from { transform: translateY(30px); opacity:0 }
+  to { transform: translateY(0); opacity:1 }
+}
+.animate-slide-up {
+  animation: slide-up 0.6s cubic-bezier(.17,.67,.83,.67);
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(30px);}
+  to { opacity: 1; transform: translateY(0);}
+}
+.animate-slide-up {
+  animation: slide-up 0.6s cubic-bezier(.17,.67,.83,.67);
+}

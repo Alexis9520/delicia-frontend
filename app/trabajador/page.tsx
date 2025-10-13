@@ -1,6 +1,8 @@
 "use client"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { motion } from "framer-motion"
+import { Package, Clock, Truck, CheckCircle, RefreshCw } from "lucide-react"
 
-import { useState, useEffect } from "react"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -10,133 +12,63 @@ import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import type { Order } from "@/lib/types"
-import { Package, Clock, Truck, CheckCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import VentaMostradorModal from "@/components/worker/venta-mostrador-modal"
+
+type TabKey = "todos" | "pendientes" | "en_preparacion" | "en_camino" | "completados" | "mostrador"
 
 export default function TrabajadorPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("todos")
+  const [activeTab, setActiveTab] = useState<TabKey>("todos")
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const { toast } = useToast()
+  const abortRef = useRef<AbortController | null>(null)
+  const [showVentaModal, setShowVentaModal] = useState(false)
 
   useEffect(() => {
     fetchOrders()
+    return () => {
+      abortRef.current?.abort()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchOrders = async () => {
     setIsLoading(true)
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+
     try {
       const response = await api.get("/orders/all")
-      setOrders(response)
+      const data = (response as any)?.data ?? response
+      setOrders(Array.isArray(data) ? data : [])
+      setLastUpdated(new Date())
     } catch (error) {
-      // Mock data for development
-      setOrders([
-        {
-          id: "order-1",
-          userId: "user-1",
-          items: [
-            {
-              id: "1",
-              name: "Pan Francés",
-              description: "Pan crujiente recién horneado",
-              price: 2.5,
-              category: "panes",
-              image: "/french-bread.png",
-              stock: 20,
-              available: true,
-              quantity: 2,
-            },
-          ],
-          total: 14.0,
-          status: "pendiente",
-          address: {
-            street: "Av. Principal 123",
-            city: "Ciudad de México",
-            state: "CDMX",
-            zipCode: "12345",
-            country: "México",
-            phone: "+52 123 456 7890",
-          },
-          paymentMethod: "Tarjeta de Crédito",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "order-2",
-          userId: "user-2",
-          items: [
-            {
-              id: "2",
-              name: "Croissant",
-              description: "Croissant de mantequilla artesanal",
-              price: 3.0,
-              category: "panes",
-              image: "/golden-croissant.png",
-              stock: 15,
-              available: true,
-              quantity: 3,
-            },
-          ],
-          total: 25.0,
-          status: "en_preparacion",
-          address: {
-            street: "Calle Secundaria 456",
-            city: "Guadalajara",
-            state: "Jalisco",
-            zipCode: "44100",
-            country: "México",
-            phone: "+52 333 444 5555",
-          },
-          paymentMethod: "PayPal",
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "order-3",
-          userId: "user-3",
-          items: [
-            {
-              id: "3",
-              name: "Pastel de Chocolate",
-              description: "Delicioso pastel de chocolate con ganache",
-              price: 25.0,
-              category: "pasteles",
-              image: "/decadent-chocolate-cake.png",
-              stock: 5,
-              available: true,
-              quantity: 1,
-            },
-          ],
-          total: 30.0,
-          status: "en_camino",
-          address: {
-            street: "Blvd. Tercero 789",
-            city: "Monterrey",
-            state: "Nuevo León",
-            zipCode: "64000",
-            country: "México",
-            phone: "+52 811 222 3333",
-          },
-          paymentMethod: "Efectivo",
-          createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          updatedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-        },
-      ])
+      setOrders([])
+      setLastUpdated(new Date())
+      toast({
+        title: "Modo demostración",
+        description: "No se pudo cargar desde el servidor. Mostrando datos de ejemplo.",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleStatusChange = async (orderId: string, newStatus: Order["status"]) => {
+    // Optimistic update
+    const prev = orders
+    setOrders((curr) => curr.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)))
+
     try {
       await api.put(`/orders/${orderId}/status`, { status: newStatus })
-      setOrders((prevOrders) =>
-        prevOrders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)),
-      )
       toast({
         title: "Estado actualizado",
         description: "El estado del pedido ha sido actualizado exitosamente",
       })
     } catch (error) {
+      setOrders(prev)
       toast({
         title: "Error",
         description: "No se pudo actualizar el estado del pedido",
@@ -145,136 +77,189 @@ export default function TrabajadorPage() {
     }
   }
 
-  const getOrdersByTab = () => {
+  // Filtro para canal de venta
+  const filteredOrders = useMemo(() => {
     switch (activeTab) {
       case "pendientes":
-        return orders.filter((o) => o.status === "pendiente")
+        return orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador")
       case "en_preparacion":
-        return orders.filter((o) => o.status === "en_preparacion")
+        return orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador")
       case "en_camino":
-        return orders.filter((o) => o.status === "en_camino")
+        return orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador")
       case "completados":
-        return orders.filter((o) => o.status === "entregado")
+        return orders.filter((o) => o.status === "entregado" && o.canal !== "mostrador")
+      case "mostrador":
+        return orders.filter((o) => o.canal === "mostrador")
       default:
         return orders
     }
-  }
+  }, [activeTab, orders])
 
-  const filteredOrders = getOrdersByTab()
-
-  const stats = [
-    {
-      title: "Pendientes",
-      value: orders.filter((o) => o.status === "pendiente").length,
-      icon: Clock,
-      color: "text-yellow-600",
-    },
-    {
-      title: "En Preparación",
-      value: orders.filter((o) => o.status === "en_preparacion").length,
-      icon: Package,
-      color: "text-blue-600",
-    },
-    {
-      title: "En Camino",
-      value: orders.filter((o) => o.status === "en_camino").length,
-      icon: Truck,
-      color: "text-purple-600",
-    },
-    {
-      title: "Completados Hoy",
-      value: orders.filter(
-        (o) => o.status === "entregado" && new Date(o.updatedAt).toDateString() === new Date().toDateString(),
-      ).length,
-      icon: CheckCircle,
-      color: "text-green-600",
-    },
-  ]
+  const stats = useMemo(
+    () => [
+      {
+        title: "Pendientes",
+        value: orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador").length,
+        icon: Clock,
+        color: "text-amber-600",
+      },
+      {
+        title: "En Preparación",
+        value: orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador").length,
+        icon: Package,
+        color: "text-orange-600",
+      },
+      {
+        title: "En Camino",
+        value: orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador").length,
+        icon: Truck,
+        color: "text-sky-600",
+      },
+      {
+        title: "Completados Hoy",
+        value: orders.filter(
+          (o) => o.status === "entregado" && o.canal !== "mostrador" && new Date(o.updatedAt).toDateString() === new Date().toDateString(),
+        ).length,
+        icon: CheckCircle,
+        color: "text-emerald-600",
+      },
+      {
+        title: "Ventas mostrador hoy",
+        value: orders.filter(
+          (o) => o.canal === "mostrador" && new Date(o.updatedAt).toDateString() === new Date().toDateString()
+        ).length,
+        icon: Package,
+        color: "text-pink-600",
+      },
+    ],
+    [orders],
+  )
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["trabajador"]}>
-        <div className="flex min-h-screen items-center justify-center">
+      <ProtectedRoute allowedRoles={["ROLE_TRABAJADOR"]}>
+        <main className="flex min-h-[60vh] items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-50 via-rose-50 to-amber-100 dark:from-stone-900 dark:via-stone-900 dark:to-stone-950">
           <Spinner className="h-8 w-8" />
-        </div>
+        </main>
       </ProtectedRoute>
     )
   }
 
   return (
-    <ProtectedRoute allowedRoles={["trabajador"]}>
-      <div className="container py-8">
-        <h1 className="text-4xl font-bold mb-8">Panel de Trabajador</h1>
+    <ProtectedRoute allowedRoles={["ROLE_TRABAJADOR"]}>
+      <main className="min-h-screen overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-50 via-rose-50 to-amber-100 dark:from-stone-900 dark:via-stone-900 dark:to-stone-950">
+        <div className="mx-auto w-full max-w-7xl px-4 py-8 md:py-12">
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <motion.h1
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45 }}
+              className="text-balance text-4xl font-extrabold tracking-tight text-stone-900 drop-shadow-sm dark:text-stone-100 sm:text-5xl"
+            >
+              Panel de Trabajo
+            </motion.h1>
 
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {stats.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <stat.icon className={`h-5 w-5 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stat.value}</div>
-              </CardContent>
-            </Card>
-          ))}
+            <div className="flex items-center gap-2">
+              {lastUpdated && (
+                <p className="text-sm text-stone-600 dark:text-stone-300">
+                  Actualizado:{" "}
+                  <span className="font-medium">
+                    {lastUpdated.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </p>
+              )}
+              <Button onClick={fetchOrders} variant="outline" className="rounded-xl">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refrescar
+              </Button>
+              <Button onClick={() => setShowVentaModal(true)} variant="brand" className="rounded-xl">
+                Registrar venta mostrador
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            {stats.map((stat) => (
+              <Card key={stat.title} className="transition-all hover:-translate-y-[2px] hover:shadow-2xl">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{stat.value}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Tabla de pedidos */}
+          <Card className="transition-all">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-bold">Gestión de Pedidos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+                <TabsList className="mb-4">
+                  <TabsTrigger value="todos">Todos ({orders.length})</TabsTrigger>
+                  <TabsTrigger value="pendientes">
+                    Pendientes ({orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador").length})
+                  </TabsTrigger>
+                  <TabsTrigger value="en_preparacion">
+                    En Preparación ({orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador").length})
+                  </TabsTrigger>
+                  <TabsTrigger value="en_camino">
+                    En Camino ({orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador").length})
+                  </TabsTrigger>
+                  <TabsTrigger value="completados">
+                    Completados ({orders.filter((o) => o.status === "entregado" && o.canal !== "mostrador").length})
+                  </TabsTrigger>
+                  <TabsTrigger value="mostrador">
+                    Mostrador ({orders.filter((o) => o.canal === "mostrador").length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value={activeTab}>
+                  {filteredOrders.length === 0 ? (
+                    <p className="py-10 text-center text-stone-500 dark:text-stone-400">
+                      No hay pedidos en esta categoría
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ID</TableHead>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Dirección</TableHead>
+                            <TableHead>Items</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Estado</TableHead>
+                            <TableHead>Canal</TableHead>
+                            <TableHead>Actualizar</TableHead>
+                            <TableHead>Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredOrders.map((order) => (
+                            <OrderTableRow key={order.id} order={order} onStatusChange={handleStatusChange} />
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
         </div>
-
-        {/* Orders Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Gestión de Pedidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="mb-4">
-                <TabsTrigger value="todos">Todos ({orders.length})</TabsTrigger>
-                <TabsTrigger value="pendientes">
-                  Pendientes ({orders.filter((o) => o.status === "pendiente").length})
-                </TabsTrigger>
-                <TabsTrigger value="en_preparacion">
-                  En Preparación ({orders.filter((o) => o.status === "en_preparacion").length})
-                </TabsTrigger>
-                <TabsTrigger value="en_camino">
-                  En Camino ({orders.filter((o) => o.status === "en_camino").length})
-                </TabsTrigger>
-                <TabsTrigger value="completados">
-                  Completados ({orders.filter((o) => o.status === "entregado").length})
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={activeTab}>
-                {filteredOrders.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No hay pedidos en esta categoría</p>
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>ID</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Dirección</TableHead>
-                          <TableHead>Items</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead>Actualizar</TableHead>
-                          <TableHead>Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredOrders.map((order) => (
-                          <OrderTableRow key={order.id} order={order} onStatusChange={handleStatusChange} />
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+        {showVentaModal && (
+          <VentaMostradorModal
+            onClose={() => setShowVentaModal(false)}
+            onVentaRegistrada={fetchOrders}
+          />
+        )}
+      </main>
     </ProtectedRoute>
   )
 }
