@@ -69,9 +69,10 @@ export default function CarritoPage() {
   }
 
   const subtotal = getTotal()
-  const FREE_SHIPPING = 50
+  const FREE_SHIPPING = 30
   const shipping = subtotal >= FREE_SHIPPING ? 0 : 5
-  const tax = subtotal * 0.1
+  const TAX_RATE = 0.18
+  const tax = subtotal * TAX_RATE
   const total = subtotal + shipping + tax
 
   return (
@@ -134,7 +135,7 @@ export default function CarritoPage() {
                 <span className="font-semibold text-amber-700 dark:text-amber-300">
                   {formatCurrency(FREE_SHIPPING - subtotal)}
                 </span>{" "}
-                más para envío gratis!
+                más para envío gratis (envío gratis a partir de {formatCurrency(FREE_SHIPPING)})!
               </p>
             )}
           </aside>

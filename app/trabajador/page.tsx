@@ -1,4 +1,5 @@
 "use client"
+
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import { Package, Clock, Truck, CheckCircle, RefreshCw } from "lucide-react"
@@ -14,6 +15,9 @@ import { useToast } from "@/hooks/use-toast"
 import type { Order } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import VentaMostradorModal from "@/components/worker/venta-mostrador-modal"
+import dynamic from "next/dynamic"
+
+const ProductionModal = dynamic(() => import("@/components/worker/production-modal"), { ssr: false })
 
 type TabKey = "todos" | "pendientes" | "en_preparacion" | "en_camino" | "completados" | "mostrador"
 
@@ -25,6 +29,7 @@ export default function TrabajadorPage() {
   const { toast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
   const [showVentaModal, setShowVentaModal] = useState(false)
+  const [showProductionModal, setShowProductionModal] = useState(false)
 
   useEffect(() => {
     fetchOrders()
@@ -175,6 +180,9 @@ export default function TrabajadorPage() {
               <Button onClick={() => setShowVentaModal(true)} variant="brand" className="rounded-xl">
                 Registrar venta mostrador
               </Button>
+              <Button onClick={() => setShowProductionModal(true)} variant="secondary" className="rounded-xl">
+                Registrar producción
+              </Button>
             </div>
           </div>
 
@@ -257,6 +265,14 @@ export default function TrabajadorPage() {
           <VentaMostradorModal
             onClose={() => setShowVentaModal(false)}
             onVentaRegistrada={fetchOrders}
+          />
+        )}
+        {showProductionModal && (
+          <ProductionModal
+            onClose={() => setShowProductionModal(false)}
+            onProcessed={() => {
+              toast({ title: "Producción registrada", description: "Se actualizó el stock." })
+            }}
           />
         )}
       </main>

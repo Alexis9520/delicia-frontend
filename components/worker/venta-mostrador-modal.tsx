@@ -1,11 +1,13 @@
+"use client"
+
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "@/lib/api"
+import { api, createMostradorOrder } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 interface Product {
-  id: string
+  id: string | number
   name: string
   price: number
   stock: number
@@ -34,17 +36,22 @@ export default function VentaMostradorModal({ onClose, onVentaRegistrada }: Vent
     const fetchProductos = async () => {
       setIsFetchingProductos(true)
       try {
-        // Puedes cambiar el pageSize si tienes muchos productos
-        const response = await api.get("/products?page=1&pageSize=100")
-        const paginated = response as any
-        const productos: Product[] = paginated.data || []
+        // Llamamos con params para que la URL y el parseo queden correctos
+        const response = await api.get("/products", { page: 1, pageSize: 100 })
+        // El backend puede devolver varias formas: { content: [...] }, { data: [...] }, o un array plano
+        const resAny = response as any
+        const maybeArray = resAny?.content ?? resAny?.data ?? resAny
+        const productos: Product[] = Array.isArray(maybeArray) ? maybeArray : []
+        // Filtrar productos disponibles y con stock (útil para mostrador)
+        const visibles = productos.filter(p => (p as any).available !== false && (p as any).stock > 0)
         setProductosSeleccionados(
-          productos.map(p => ({
+          visibles.map(p => ({
             ...p,
             cantidad: 0
           }))
         )
       } catch (err) {
+        console.error("Error cargando productos mostrador:", err)
         toast({ title: "Error", description: "No se pudo cargar la lista de productos", variant: "destructive" })
         setProductosSeleccionados([])
       } finally {
@@ -52,11 +59,12 @@ export default function VentaMostradorModal({ onClose, onVentaRegistrada }: Vent
       }
     }
     fetchProductos()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast])
 
-  const handleCantidad = (id: string, cantidad: number | string) => {
+  const handleCantidad = (id: string | number, cantidad: number | string) => {
     setProductosSeleccionados(ps =>
-      ps.map(p => p.id === id ? { ...p, cantidad: Math.max(0, Number(cantidad)) } : p)
+      ps.map(p => p.id === id ? { ...p, cantidad: Math.max(0, Number(cantidad) || 0) } : p)
     )
   }
 
@@ -72,7 +80,8 @@ export default function VentaMostradorModal({ onClose, onVentaRegistrada }: Vent
     }
     setIsLoading(true)
     try {
-      await api.post("/orders/mostrador", {
+      // Usamos helper createMostradorOrder (que envía a /orders/mostrador y backend validará stock)
+      await createMostradorOrder({
         items,
         nombreCliente: nombre.trim(),
         documentoCliente: documento.trim(),
@@ -83,8 +92,15 @@ export default function VentaMostradorModal({ onClose, onVentaRegistrada }: Vent
       toast({ title: "Venta registrada", description: "La venta presencial fue registrada correctamente." })
       onVentaRegistrada()
       onClose()
-    } catch (err) {
-      toast({ title: "Error", description: "No se pudo registrar la venta", variant: "destructive" })
+    } catch (err: any) {
+      console.error("Error registrando venta mostrador:", err)
+      const message = err?.message || err?.payload || "No se pudo registrar la venta"
+      const isStock = String(message).toLowerCase().includes("stock")
+      if (isStock) {
+        toast({ title: "Stock insuficiente", description: "Uno o más productos no tienen stock suficiente. Actualiza las cantidades.", variant: "destructive" })
+      } else {
+        toast({ title: "Error", description: String(message), variant: "destructive" })
+      }
     } finally {
       setIsLoading(false)
     }
@@ -97,12 +113,12 @@ export default function VentaMostradorModal({ onClose, onVentaRegistrada }: Vent
         {isFetchingProductos ? (
           <div className="py-8 flex justify-center">Cargando productos...</div>
         ) : (
-          <div className="space-y-2 mb-3">
+          <div className="space-y-2 mb-3 max-h-64 overflow-auto">
             {productosSeleccionados.length === 0 ? (
               <div className="text-center text-stone-500">No hay productos para mostrar.</div>
             ) : (
               productosSeleccionados.map(p => (
-                <div key={p.id} className="flex items-center gap-2">
+                <div key={String(p.id)} className="flex items-center gap-2 py-2">
                   <span className="flex-1">{p.name} (S/ {p.price})</span>
                   <Input
                     type="number"

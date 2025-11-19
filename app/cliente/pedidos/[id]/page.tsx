@@ -83,13 +83,25 @@ export default function OrderDetailsPage() {
 
   const totals = useMemo(() => {
     if (!order) return { subtotal: 0, shipping: 0, tax: 0, total: 0 }
+    // Use server-provided values when present, otherwise compute client-side
     const subtotal =
       typeof (order as any).subtotal === "number"
         ? (order as any).subtotal
         : order.items?.reduce((acc, it) => acc + it.price * it.quantity, 0) ?? 0
-    const shipping = (order as any).shipping ?? 0
-    const tax = (order as any).tax ?? 0
-    const total = (order as any).total ?? subtotal + shipping + tax
+
+    const FREE_SHIPPING = 30
+    const TAX_RATE = 0.18
+
+    const shippingComputed = subtotal >= FREE_SHIPPING ? 0 : 5
+    const shipping = typeof (order as any).shipping === "number" ? (order as any).shipping : shippingComputed
+
+    const taxComputed = Number((subtotal * TAX_RATE).toFixed(2))
+    const tax = typeof (order as any).tax === "number" ? (order as any).tax : taxComputed
+
+    const computedTotal = Number((subtotal + shipping + tax).toFixed(2))
+    // If server returned a total that doesn't match the computed breakdown, prefer the computed one
+    const serverTotal = typeof (order as any).total === "number" ? (order as any).total : undefined
+    const total = typeof serverTotal === "number" && Math.abs(serverTotal - computedTotal) < 0.01 ? serverTotal : computedTotal
     return { subtotal, shipping, tax, total }
   }, [order])
 

@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -39,24 +38,43 @@ export function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+
     try {
-      const response: AuthResponse = await api.post("/auth/login", {
-        email,
-        password,
-      })
+      // Llamada al backend
+      const response: AuthResponse = await api.post("/auth/login", { email, password })
+      // Debug básico para ver el response (se puede eliminar en producción)
+      console.log("LOGIN response:", response)
+
+      if (!response || !response.token) {
+        toast({
+          title: "Error",
+          description: "Respuesta inválida del servidor al iniciar sesión.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Guardar token y datos de usuario
       setAuthToken(response.token)
       const user = decodeUserFromToken(response.token)
       setUserData(user || { email })
 
-      // Dispara el evento para refrescar el estado de autenticación en toda la app
-      window.dispatchEvent(new Event("authChanged"))
+      // Disparar evento global para que otros componentes actualicen estado auth
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("authChanged"))
+      }
 
       toast({
         title: "¡Bienvenido!",
         description: "Has iniciado sesión correctamente",
       })
+
       // Redirección según rol
-      switch (user?.role) {
+      const role = (user && (user.role || user.roles || user.authorities)) ?? null
+      // role puede venir en diferentes formatos; normalizamos
+      const normalizedRole = typeof role === "string" ? role : Array.isArray(role) ? role[0] : null
+
+      switch (normalizedRole) {
         case "ROLE_ADMIN":
           router.push("/admin")
           break
@@ -64,31 +82,33 @@ export function LoginForm() {
           router.push("/trabajador")
           break
         case "ROLE_CLIENTE":
+        case "CLIENTE":
           router.push("/catalogo")
           break
         default:
           router.push("/")
       }
     } catch (error: any) {
-      // Detecta mensaje personalizado del backend
+      // Log completo para depuración (el buildApiError añade payload en error.payload)
+      console.error("Login error raw:", error)
+
+      // Intentar leer payload con prioridad:
+      // - error.payload (desde buildApiError)
+      // - error.response?.payload (si otros wrappers)
+      // - error.message
+      const payload = error?.payload ?? error?.response?.payload ?? null
       let description = "Credenciales inválidas"
-      if (error?.message) {
-        // Normaliza errores comunes
-        if (
-          error.message.toLowerCase().includes("contraseña incorrecta") ||
-          error.message.toLowerCase().includes("password") ||
-          error.message.toLowerCase().includes("credenciales inválidas")
-        ) {
-          description = "Contraseña incorrecta"
-        } else if (
-          error.message.toLowerCase().includes("usuario no encontrado") ||
-          error.message.toLowerCase().includes("not found")
-        ) {
-          description = "Usuario no encontrado"
-        } else {
-          description = error.message
+
+      if (payload) {
+        if (typeof payload === "object") {
+          description = String(payload.error || payload.message || JSON.stringify(payload))
+        } else if (typeof payload === "string") {
+          description = payload
         }
+      } else if (error?.message) {
+        description = error.message
       }
+
       toast({
         title: "Error",
         description,
@@ -106,8 +126,10 @@ export function LoginForm() {
       transition={{ duration: 0.45, ease: [0.21, 0.47, 0.32, 0.98] }}
       className="relative"
     >
-      {/* Borde degradado suave */}
-      <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-br from-amber-300/60 via-rose-300/50 to-amber-400/60 opacity-70 blur-[2px] dark:from-amber-400/20 dark:via-rose-400/15 dark:to-amber-500/20" aria-hidden="true" />
+      <div
+        className="absolute -inset-[1px] rounded-2xl bg-gradient-to-br from-amber-300/60 via-rose-300/50 to-amber-400/60 opacity-70 blur-[2px] dark:from-amber-400/20 dark:via-rose-400/15 dark:to-amber-500/20"
+        aria-hidden="true"
+      />
       <Card className="relative w-full overflow-hidden rounded-2xl border border-white/60 bg-white/80 backdrop-blur-md shadow-xl dark:border-white/10 dark:bg-stone-950/60">
         <CardHeader className="space-y-1 pb-3">
           <CardTitle className="text-center text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
@@ -120,7 +142,6 @@ export function LoginForm() {
 
         <form onSubmit={handleSubmit} noValidate>
           <CardContent className="space-y-4">
-            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-stone-700 dark:text-stone-200">
                 Correo electrónico
@@ -144,7 +165,6 @@ export function LoginForm() {
               </div>
             </div>
 
-            {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password" className="text-stone-700 dark:text-stone-200">
                 Contraseña
@@ -173,10 +193,8 @@ export function LoginForm() {
               </div>
             </div>
 
-            {/* Acciones secundarias */}
-            <div className="flex items-center justify-between gap-2 pt-1 text-sm">
-              {/* Aquí puedes agregar links de recuperación de contraseña, etc */}
-            </div>
+            <div className="flex items-center justify-between gap-2 pt-1 text-sm" />
+
           </CardContent>
 
           <CardFooter className="flex flex-col gap-4">
@@ -195,7 +213,6 @@ export function LoginForm() {
                   <>Iniciar sesión</>
                 )}
               </span>
-              {/* Brillo sutil al hover */}
               <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-white/0 via-white/25 to-white/0 transition-transform duration-700 ease-out group-hover:translate-x-full" />
             </Button>
 

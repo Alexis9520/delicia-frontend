@@ -18,8 +18,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es">
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+      <html lang="es">
+        <head>
+          <link rel="icon" href="/cuerno.png" type="image/png" />
+        </head>
+        <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <Suspense fallback={<div>Loading...</div>}>
           <Navbar />
           <main className="w-full">{children}</main>

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/currency"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://37.60.233.86:8080/api"
 
 export function StripePaymentForm({
   amount,

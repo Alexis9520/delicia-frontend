@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { OrderStatusBadge } from "@/components/orders/order-status-badge"
 import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/api"
+import { getAuthToken } from "@/lib/auth"
 import { useToast } from "@/hooks/use-toast"
 import type { Order } from "@/lib/types"
 import { formatCurrency } from "@/lib/currency"
@@ -35,7 +36,14 @@ export default function WorkerOrderDetailPage() {
   const fetchOrder = async () => {
     setIsLoading(true)
     try {
-      const response = await api.get(`/orders/worker/${id}`)
+      // Intentar llamar al endpoint enviando solo el header Authorization
+      // y omitiendo cookies (por si la sesión en cookie causa conflicto en el backend)
+      const token = getAuthToken()
+      const requestInit: RequestInit = token
+        ? { headers: { Authorization: `Bearer ${token}` }, credentials: "omit" }
+        : { credentials: "include" }
+
+      const response = await api.get(`/orders/worker/${id}`, requestInit)
       const data = (response as any)?.data ?? response
       setOrder(data as Order)
     } catch {
@@ -46,15 +54,15 @@ export default function WorkerOrderDetailPage() {
         items: [
           {
             id: "1",
-            name: "Pan Francés",
-            description: "Pan crujiente recién horneado",
-            price: 2.5,
-            category: "panes",
-            image: "/french-bread.png",
-            stock: 20,
-            available: true,
-            quantity: 2,
-          },
+                name: "Pan Francés",
+                description: "Pan crujiente recién horneado",
+                price: 2.5,
+                category: "panes",
+                image: "/french-bread.png",
+                stock: 20,
+                available: true,
+                quantity: 2,
+              },
           {
             id: "2",
             name: "Croissant",
@@ -96,16 +104,30 @@ export default function WorkerOrderDetailPage() {
     const prev = order
     setOrder({ ...order, status: newStatus })
     try {
-      await api.put(`/orders/${order.id}/status`, { status: newStatus })
+      // Enviar Authorization explícito y omitir cookies si hay token,
+      // esto evita que el backend mezcle autenticación por sesión y JWT.
+      const token = (typeof window !== 'undefined') ? (localStorage.getItem('authToken') || localStorage.getItem('token')) : null
+      const requestInit: RequestInit = token
+        ? { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, credentials: 'omit' }
+        : { headers: { 'Content-Type': 'application/json' }, credentials: 'include' }
+
+      await api.put(`/orders/${order.id}/status`, { status: newStatus }, requestInit)
       toast({
         title: "Estado actualizado",
         description: "El estado del pedido ha sido actualizado exitosamente",
       })
-    } catch {
+    } catch (err: any) {
+      // Revertir estado en UI
       setOrder(prev)
+      // Log del error y mostrar detalle en desarrollo
+      // eslint-disable-next-line no-console
+      console.error("Error actualizando estado del pedido:", err)
+      const devDetail = (typeof window !== "undefined" && process.env.NODE_ENV !== "production")
+        ? (err?.rawBody || err?.payload || err?.message)
+        : null
       toast({
         title: "Error",
-        description: "No se pudo actualizar el estado del pedido",
+        description: devDetail ? `No se pudo actualizar el estado: ${String(devDetail).slice(0, 200)}` : "No se pudo actualizar el estado del pedido",
         variant: "destructive",
       })
     } finally {

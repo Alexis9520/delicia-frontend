@@ -10,6 +10,15 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from '@/components/ui/dialog'
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
@@ -31,6 +40,7 @@ export default function AdminUsersPage() {
     phone: "",
   })
   const [isRegistering, setIsRegistering] = useState(false)
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
 
   // Modales: editar
   const [editUser, setEditUser] = useState<User | null>(null)
@@ -223,6 +233,8 @@ export default function AdminUsersPage() {
         description: `El usuario ${registerForm.email} fue registrado correctamente.`,
       })
       setRegisterForm({ name: "", email: "", password: "", role: "ROLE_TRABAJADOR", phone: "" })
+      // Cerrar modal tras registro exitoso
+      setShowRegisterModal(false)
       fetchUsers()
     } catch (error: any) {
       toast({
@@ -396,94 +408,110 @@ export default function AdminUsersPage() {
             </Card>
           </div>
 
-          {/* Registro de usuario */}
+          {/* Registro de usuario (ahora en modal) */}
           <Card className="mb-8">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex items-center justify-between gap-4">
               <CardTitle className="text-lg font-bold">Registrar nuevo usuario</CardTitle>
+              <div>
+                <Dialog open={showRegisterModal} onOpenChange={(v) => setShowRegisterModal(v)}>
+                  <DialogTrigger asChild>
+                    <Button variant="brand" className="rounded-xl">
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Nuevo usuario
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Registrar nuevo usuario</DialogTitle>
+                      <DialogDescription>Completa los datos para crear un nuevo usuario.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleRegisterUser} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Nombre</Label>
+                        <Input
+                          type="text"
+                          name="name"
+                          required
+                          value={registerForm.name}
+                          onChange={handleRegisterInput}
+                          disabled={isRegistering}
+                          placeholder="Nombre completo"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Correo</Label>
+                        <Input
+                          type="email"
+                          name="email"
+                          required
+                          value={registerForm.email}
+                          onChange={handleRegisterInput}
+                          disabled={isRegistering}
+                          placeholder="correo@ejemplo.com"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Contraseña</Label>
+                        <Input
+                          type="password"
+                          name="password"
+                          required
+                          value={registerForm.password}
+                          onChange={handleRegisterInput}
+                          disabled={isRegistering}
+                          placeholder="••••••••"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Rol</Label>
+                        <Select
+                          value={registerForm.role}
+                          onValueChange={(v) => setRegisterForm((prev) => ({ ...prev, role: v }))}
+                          disabled={isRegistering}
+                        >
+                          <SelectTrigger className="h-11">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ROLE_ADMIN">Administrador</SelectItem>
+                            <SelectItem value="ROLE_TRABAJADOR">Trabajador</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Teléfono</Label>
+                        <Input
+                          type="text"
+                          name="phone"
+                          value={registerForm.phone}
+                          onChange={handleRegisterInput}
+                          disabled={isRegistering}
+                          placeholder="+51 999 999 999"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="sm:col-span-2 flex gap-2">
+                        <Button type="submit" disabled={isRegistering} variant="brand" className="flex-1 rounded-xl">
+                          {isRegistering ? (
+                            <>Registrando...</>
+                          ) : (
+                            <>Registrar usuario</>
+                          )}
+                        </Button>
+                        <DialogClose asChild>
+                          <Button type="button" variant="outline" className="flex-0 rounded-xl" onClick={() => setShowRegisterModal(false)}>
+                            Cancelar
+                          </Button>
+                        </DialogClose>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleRegisterUser} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input
-                    type="text"
-                    name="name"
-                    required
-                    value={registerForm.name}
-                    onChange={handleRegisterInput}
-                    disabled={isRegistering}
-                    placeholder="Nombre completo"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Correo</Label>
-                  <Input
-                    type="email"
-                    name="email"
-                    required
-                    value={registerForm.email}
-                    onChange={handleRegisterInput}
-                    disabled={isRegistering}
-                    placeholder="correo@ejemplo.com"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contraseña</Label>
-                  <Input
-                    type="password"
-                    name="password"
-                    required
-                    value={registerForm.password}
-                    onChange={handleRegisterInput}
-                    disabled={isRegistering}
-                    placeholder="••••••••"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Rol</Label>
-                  <Select
-                    value={registerForm.role}
-                    onValueChange={(v) => setRegisterForm((prev) => ({ ...prev, role: v }))}
-                    disabled={isRegistering}
-                  >
-                    <SelectTrigger className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ROLE_ADMIN">Administrador</SelectItem>
-                      <SelectItem value="ROLE_TRABAJADOR">Trabajador</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Teléfono</Label>
-                  <Input
-                    type="text"
-                    name="phone"
-                    value={registerForm.phone}
-                    onChange={handleRegisterInput}
-                    disabled={isRegistering}
-                    placeholder="+51 999 999 999"
-                    className="h-11"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={isRegistering} variant="brand" className="w-full rounded-xl">
-                    {isRegistering ? (
-                      <>Registrando...</>
-                    ) : (
-                      <>
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Registrar usuario
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
           </Card>
 
           {/* Tabla de usuarios */}

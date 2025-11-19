@@ -8,23 +8,35 @@ import { Pagination } from "@/components/products/pagination"
 import { api } from "@/lib/api"
 import type { Product, Category, PaginatedResponse } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { useCart } from '@/hooks/use-cart'
 
-// Mock categories
-const mockCategories: Category[] = [
-  { id: "1", name: "Panes", slug: "panes" },
-  { id: "2", name: "Pasteles", slug: "pasteles" },
-  { id: "3", name: "Galletas", slug: "galletas" },
-  { id: "4", name: "Tartas", slug: "tartas" },
-]
+// Categories loaded from API — se obtienen en el hook `useEffect` más abajo
 
 export default function CatalogoPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [categories, setCategories] = useState<Category[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const { toast } = useToast()
+
+  // Cargar categorías existentes en el sistema
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const resp: any = await api.get('/categories')
+        const data = (resp as any)?.data ?? resp
+        if (Array.isArray(data)) setCategories(data)
+      } catch (err) {
+        // Silencioso: mantener vacío si falla
+        setCategories([])
+      }
+    }
+
+    fetchCategories()
+  }, [])
 
   useEffect(() => {
     fetchProducts()
@@ -98,19 +110,10 @@ export default function CatalogoPage() {
     }
   }
 
+  const { addItem } = useCart()
   const handleAddToCart = (product: Product) => {
-    const cart = JSON.parse(localStorage.getItem("cart") || "[]")
-    const existingItem = cart.find((item: any) => item.id === product.id)
-
-    if (existingItem) {
-      existingItem.quantity += 1
-    } else {
-      cart.push({ ...product, quantity: 1 })
-    }
-
-    localStorage.setItem("cart", JSON.stringify(cart))
-    // Opcional: disparar evento para animaciones del carrito
-    window.dispatchEvent(new CustomEvent("cartUpdated"))
+    // Usa el hook centralizado para mantener estado sincronizado con el NavBar
+    addItem(product, 1)
   }
 
   return (
@@ -139,7 +142,7 @@ export default function CatalogoPage() {
           <div className="mt-6 w-full">
             <div className="rounded-2xl border border-white/60 bg-white/80 p-4 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-stone-950/60">
               <ProductFilters
-                categories={mockCategories}
+                categories={categories}
                 searchQuery={searchQuery}
                 selectedCategory={selectedCategory}
                 onSearchChange={(q) => {

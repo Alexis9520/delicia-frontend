@@ -9,6 +9,16 @@ import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+  DialogHeader,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -16,6 +26,18 @@ import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api"
 import { Pencil, Trash2, CheckCircle2, XCircle, ImageIcon, Upload, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
+import { ChartContainer } from '@/components/ui/chart'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as ReTooltip,
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+} from 'recharts'
 
 export interface Product {
   id?: string
@@ -39,6 +61,7 @@ const emptyForm: Product = {
 }
 
 export default function AdminProductsPage() {
+  const [showModal, setShowModal] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [form, setForm] = useState<Product>(emptyForm)
@@ -195,6 +218,8 @@ export default function AdminProductsPage() {
     setEditId(product.id || null)
     setImageFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
+    // Open modal when editing
+    setShowModal(true)
   }
 
   const handleDelete = async (id?: string) => {
@@ -224,6 +249,21 @@ export default function AdminProductsPage() {
 
   // Preview de imagen (archivo o URL)
   const imagePreview = imageFile ? URL.createObjectURL(imageFile) : form.image || ""
+
+  // Datos para gráficas
+  const categoriesCount = products.reduce<Record<string, number>>((acc, p) => {
+    acc[p.category || 'Sin categoría'] = (acc[p.category || 'Sin categoría'] || 0) + 1
+    return acc
+  }, {})
+
+  const categoryData = Object.entries(categoriesCount).map(([name, value]) => ({ name, value }))
+
+  const availabilityData = [
+    { name: 'Disponible', value: products.filter(p => p.available).length },
+    { name: 'No disponible', value: products.filter(p => !p.available).length },
+  ]
+
+  const COLORS = ['#10B981', '#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6']
 
   return (
     <ProtectedRoute allowedRoles={["ROLE_ADMIN"]}>
@@ -267,180 +307,199 @@ export default function AdminProductsPage() {
             </Card>
           </div>
 
-          {/* Formulario */}
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>{isEditing ? "Editar Producto" : "Agregar Nuevo Producto"}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Nombre</Label>
-                  <Input
-                    type="text"
-                    name="name"
-                    required
-                    value={form.name}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    placeholder="Nombre del producto"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Categoría</Label>
-                  <Input
-                    type="text"
-                    name="category"
-                    required
-                    value={form.category}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    placeholder="Categoría"
-                    className="h-11"
-                  />
-                </div>
+          {/* Controls: Add product button + Charts */}
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-center gap-3">
+              <Dialog open={showModal} onOpenChange={(open) => setShowModal(open)}>
+                <DialogTrigger asChild>
+                  <Button className="rounded-xl" variant="brand">
+                    Agregar producto
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{isEditing ? 'Editar Producto' : 'Agregar Nuevo Producto'}</DialogTitle>
+                    <DialogDescription>{isEditing ? 'Modifica los datos del producto.' : 'Completa los datos para crear un producto.'}</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={(e) => { handleSubmit(e); setShowModal(false); }} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Nombre</Label>
+                      <Input
+                        type="text"
+                        name="name"
+                        required
+                        value={form.name}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="Nombre del producto"
+                        className="h-11"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Categoría</Label>
+                      <Input
+                        type="text"
+                        name="category"
+                        required
+                        value={form.category}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="Categoría"
+                        className="h-11"
+                      />
+                    </div>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label>Descripción</Label>
-                  <textarea
-                    name="description"
-                    required
-                    value={form.description}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    placeholder="Descripción del producto"
-                    className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0 transition focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300"
-                  />
-                </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <Label>Descripción</Label>
+                      <textarea
+                        name="description"
+                        required
+                        value={form.description}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="Descripción del producto"
+                        className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0 transition focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>Precio</Label>
-                  <Input
-                    type="number"
-                    name="price"
-                    required
-                    min={0}
-                    step="0.01"
-                    value={form.price}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    placeholder="0.00"
-                    className="h-11"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>Precio</Label>
+                      <Input
+                        type="number"
+                        name="price"
+                        required
+                        min={0}
+                        step="0.01"
+                        value={form.price}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="0.00"
+                        className="h-11"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>Stock</Label>
-                  <Input
-                    type="number"
-                    name="stock"
-                    required
-                    min={0}
-                    value={form.stock}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    placeholder="0"
-                    className="h-11"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>Stock</Label>
+                      <Input
+                        type="number"
+                        name="stock"
+                        required
+                        min={0}
+                        value={form.stock}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="0"
+                        className="h-11"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>Disponible</Label>
-                  <Select
-                    value={form.available ? "true" : "false"}
-                    onValueChange={(val) => setForm((prev) => ({ ...prev, available: val === "true" }))}
-                    disabled={isSubmitting}
-                  >
-                    <SelectTrigger className="h-11">
-                      <SelectValue placeholder="Selecciona disponibilidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">
-                        <span className="inline-flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                          Disponible
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="false">
-                        <span className="inline-flex items-center gap-2">
-                          <XCircle className="h-4 w-4 text-rose-600" />
-                          No disponible
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <div className="space-y-2">
+                      <Label>Disponible</Label>
+                      <Select
+                        value={form.available ? "true" : "false"}
+                        onValueChange={(val) => setForm((prev) => ({ ...prev, available: val === "true" }))}
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="Selecciona disponibilidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="true">
+                            <span className="inline-flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                              Disponible
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="false">
+                            <span className="inline-flex items-center gap-2">
+                              <XCircle className="h-4 w-4 text-rose-600" />
+                              No disponible
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {/* Imagen */}
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Subir Imagen</Label>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      disabled={isSubmitting}
-                      className="h-11"
-                    />
-                    <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Elegir
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">O ingresa una URL abajo.</p>
-                </div>
+                    {/* Imagen */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Subir Imagen</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          disabled={isSubmitting}
+                          className="h-11"
+                        />
+                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Elegir
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">O ingresa una URL abajo.</p>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>URL Imagen</Label>
-                  <Input
-                    type="text"
-                    name="image"
-                    value={form.image}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting || !!imageFile}
-                    placeholder="https://imagen.com/producto.jpg"
-                    className="h-11"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>URL Imagen</Label>
+                      <Input
+                        type="text"
+                        name="image"
+                        value={form.image}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting || !!imageFile}
+                        placeholder="https://imagen.com/producto.jpg"
+                        className="h-11"
+                      />
+                    </div>
 
-                {/* Preview */}
-                <div className="md:col-span-3">
-                  <div className="flex items-center gap-4 rounded-xl border border-white/60 bg-white/70 p-3 dark:border-white/10 dark:bg-stone-900/60">
-                    <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg bg-stone-100 text-stone-400 dark:bg-stone-800">
-                      {imagePreview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={imagePreview} alt="Vista previa" className="h-16 w-16 object-cover" />
-                      ) : (
-                        <ImageIcon className="h-6 w-6" />
+                    {/* Preview */}
+                    <div className="md:col-span-3">
+                      <div className="flex items-center gap-4 rounded-xl border border-white/60 bg-white/70 p-3 dark:border-white/10 dark:bg-stone-900/60">
+                        <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg bg-stone-100 text-stone-400 dark:bg-stone-800">
+                          {imagePreview ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={imagePreview} alt="Vista previa" className="h-16 w-16 object-cover" />
+                          ) : (
+                            <ImageIcon className="h-6 w-6" />
+                          )}
+                        </div>
+                        <div className="text-sm text-stone-600 dark:text-stone-300">
+                          {imagePreview ? "Vista previa de la imagen seleccionada" : "Sin imagen seleccionada"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-3 flex flex-col gap-2 pt-2">
+                      <Button type="submit" disabled={isSubmitting} variant="brand" className="w-full rounded-xl">
+                        {isSubmitting ? (isEditing ? "Guardando..." : "Agregando...") : isEditing ? "Guardar cambios" : "Agregar producto"}
+                      </Button>
+                      {isEditing && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full rounded-xl"
+                          onClick={() => { resetForm(); setShowModal(false); }}
+                          disabled={isSubmitting}
+                        >
+                          Cancelar edición
+                        </Button>
                       )}
                     </div>
-                    <div className="text-sm text-stone-600 dark:text-stone-300">
-                      {imagePreview ? "Vista previa de la imagen seleccionada" : "Sin imagen seleccionada"}
-                    </div>
-                  </div>
-                </div>
+                  </form>
+                  <DialogFooter>
+                    <DialogClose />
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" onClick={fetchProducts} className="rounded-xl" disabled={isLoading || isSubmitting}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refrescar
+              </Button>
+            </div>
 
-                <div className="md:col-span-3 flex flex-col gap-2 pt-2">
-                  <Button type="submit" disabled={isSubmitting} variant="brand" className="w-full rounded-xl">
-                    {isSubmitting ? (isEditing ? "Guardando..." : "Agregando...") : isEditing ? "Guardar cambios" : "Agregar producto"}
-                  </Button>
-                  {isEditing && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full rounded-xl"
-                      onClick={resetForm}
-                      disabled={isSubmitting}
-                    >
-                      Cancelar edición
-                    </Button>
-                  )}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+            
+          </div>
 
           {/* Tabla de productos */}
           <Card>
@@ -455,46 +514,46 @@ export default function AdminProductsPage() {
               ) : products.length === 0 ? (
                 <p className="py-8 text-center text-stone-500 dark:text-stone-400">No hay productos.</p>
               ) : (
-                <div className="overflow-x-auto rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Imagen</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead className="min-w-[320px]">Descripción</TableHead>
-                        <TableHead>Categoría</TableHead>
-                        <TableHead>Precio</TableHead>
-                        <TableHead>Stock</TableHead>
-                        <TableHead>Disponible</TableHead>
-                        <TableHead>Acciones</TableHead>
+                <div className="overflow-x-auto rounded-md border bg-white/60 dark:bg-stone-900/60 shadow-sm">
+                  <Table className="min-w-full">
+                    <TableHeader className="bg-background/80 sticky top-0 z-20">
+                      <TableRow className="text-left">
+                        <TableHead className="whitespace-nowrap text-sm">Imagen</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Nombre</TableHead>
+                        <TableHead className="min-w-[320px] text-sm">Descripción</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Categoría</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Precio</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Stock</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Disponible</TableHead>
+                        <TableHead className="whitespace-nowrap text-sm">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {products.map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell>
+                        <TableRow key={p.id} className="hover:bg-muted/40 transition-colors">
+                          <TableCell className="py-3 align-middle">
                             {p.image ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={p.image} alt={p.name} className="h-12 w-12 rounded object-cover" />
+                              <img src={p.image} alt={p.name} className="h-10 w-10 rounded-md object-cover" />
                             ) : (
                               <span className="text-xs text-muted-foreground">Sin imagen</span>
                             )}
                           </TableCell>
-                          <TableCell className="font-medium">{p.name}</TableCell>
-                          <TableCell className="max-w-md text-sm">{p.description}</TableCell>
-                          <TableCell>{p.category}</TableCell>
-                          <TableCell>
+                          <TableCell className="font-medium py-3 align-middle whitespace-nowrap">{p.name}</TableCell>
+                          <TableCell className="max-w-md text-sm py-3 align-middle text-muted-foreground truncate">{p.description}</TableCell>
+                          <TableCell className="py-3 align-middle whitespace-nowrap">{p.category}</TableCell>
+                          <TableCell className="py-3 align-middle whitespace-nowrap">
                             <Badge variant="secondary">{formatCurrency(Number(p.price) || 0)}</Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3 align-middle whitespace-nowrap">
                             <Badge variant={p.stock > 0 ? "secondary" : "destructive"}>{p.stock}</Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3 align-middle whitespace-nowrap">
                             <Badge variant={p.available ? "default" : "destructive"}>
                               {p.available ? "Sí" : "No"}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3 align-middle whitespace-nowrap">
                             <div className="flex gap-1.5">
                               <Button
                                 type="button"

@@ -25,7 +25,7 @@ export function CartSummary({
   checkoutLabel = "Proceder al pago",
   isCheckoutDisabled = false,
 }: CartSummaryProps) {
-  const FREE_SHIPPING = 50
+  const FREE_SHIPPING = 30
   const missing = Math.max(0, FREE_SHIPPING - subtotal)
   const progress = Math.min(100, Math.round((subtotal / FREE_SHIPPING) * 100))
 

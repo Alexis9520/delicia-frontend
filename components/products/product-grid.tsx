@@ -1,5 +1,3 @@
-"use client"
-
 import { motion } from "framer-motion"
 import type { Product } from "@/lib/types"
 import { ProductCard } from "./product-card"
@@ -7,12 +5,12 @@ import { Spinner } from "@/components/ui/spinner"
 import { PackageOpen } from "lucide-react"
 
 interface ProductGridProps {
-  products: Product[]
+  products?: Product[]    // <-- Puede ser undefined
   isLoading?: boolean
   onAddToCart?: (product: Product) => void
 }
 
-export function ProductGrid({ products, isLoading, onAddToCart }: ProductGridProps) {
+export function ProductGrid({ products = [], isLoading, onAddToCart }: ProductGridProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">

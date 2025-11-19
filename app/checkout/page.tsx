@@ -13,7 +13,7 @@ import { OrderReview } from "@/components/checkout/order-review"
 import { StripePaymentForm } from "./StripePaymentForm";
 import { useCart } from "@/hooks/use-cart"
 import { useToast } from "@/hooks/use-toast"
-import { api } from "@/lib/api"
+import { api, createOrder } from "@/lib/api"
 import type { Address } from "@/lib/types"
 import { formatCurrency } from "@/lib/currency"
 
@@ -25,7 +25,7 @@ type CheckoutStep = "address" | "payment" | "review"
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { cart, getTotal, clearCart } = useCart()
+  const { cart, getTotal, clearCart, removeItem, updateQuantity } = useCart()
   const { toast } = useToast()
 
   const [currentStep, setCurrentStep] = useState<CheckoutStep>("address")
@@ -35,8 +35,10 @@ export default function CheckoutPage() {
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null)
 
   const subtotal = getTotal()
-  const shipping = subtotal > 50 ? 0 : 5
-  const tax = subtotal * 0.1
+  const FREE_SHIPPING = 30
+  const TAX_RATE = 0.18
+  const shipping = subtotal >= FREE_SHIPPING ? 0 : 5
+  const tax = subtotal * TAX_RATE
   const total = subtotal + shipping + tax
 
   const handleAddressSubmit = (newAddress: Address) => {
@@ -48,6 +50,27 @@ export default function CheckoutPage() {
     setPaymentMethod("stripe")
     setPaymentIntentId(intentId)
     setCurrentStep("review")
+  }
+
+  // Si ocurre un error de stock, sincronizamos el carrito con el stock real del backend
+  const syncCartWithServerStock = async () => {
+    try {
+      for (const item of cart) {
+        try {
+          const product = await api.get(`/products/${item.id}`)
+          if (!product) continue
+          if (product.stock === 0) {
+            removeItem(item.id)
+          } else if (item.quantity > product.stock) {
+            updateQuantity(item.id, product.stock)
+          }
+        } catch {
+          // ignoramos errores individuales al refrescar cada producto
+        }
+      }
+    } catch {
+      // no hacemos nada
+    }
   }
 
   const handleConfirmOrder = async () => {
@@ -62,12 +85,17 @@ export default function CheckoutPage() {
         })),
         address,
         paymentMethod,
+        subtotal,
+        shipping,
+        tax,
         total,
         paymentIntentId,
       }
 
-      const response = await api.post("/orders", orderData)
+      // Llamada al backend
+      const response = await createOrder(orderData)
 
+      // Si llegó aquí, la orden fue creada
       clearCart()
       toast({
         title: "Pedido confirmado",
@@ -75,12 +103,29 @@ export default function CheckoutPage() {
       })
 
       router.push(`/cliente/pedidos/${response.id}`)
-    } catch {
-      toast({
-        title: "Error",
-        description: "No se pudo procesar tu pedido. Intenta nuevamente.",
-        variant: "destructive",
-      })
+    } catch (err: any) {
+      // err puede tener err.status y err.payload (lo construimos en lib/api.ts)
+      const message = err?.message || "No se pudo procesar tu pedido. Intenta nuevamente."
+
+      // Manejo especial para errores de stock (texto estándar "Stock insuficiente" o payload)
+      const isStockError = message.toLowerCase().includes("stock insuficiente") ||
+        (err?.payload && JSON.stringify(err.payload).toLowerCase().includes("stock"));
+
+      if (isStockError) {
+        // No limpiamos el carrito. Sincronizamos cantidades con el server y mostramos mensaje claro.
+        await syncCartWithServerStock()
+        toast({
+          title: "Stock insuficiente",
+          description: "Uno o más productos no tienen stock suficiente. Se actualizó tu carrito con el stock disponible.",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: message,
+          variant: "destructive",
+        })
+      }
     } finally {
       setIsLoading(false)
     }

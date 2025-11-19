@@ -1,10 +1,58 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { API_URL } from "@/lib/api"
+import { getAuthToken } from "@/lib/auth"
+import { useToast } from "@/hooks/use-toast"
+import { useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 
 export function ComprobanteCard({ comprobante }: { comprobante: any }) {
+  const { toast } = useToast()
+
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownload = async (id: string | number) => {
+    setIsDownloading(true)
+    try {
+      const token = getAuthToken()
+      const url = `${API_URL}/comprobantes/pdf/${id}`
+      const headers: Record<string, string> = {}
+      if (token) headers.Authorization = `Bearer ${token}`
+
+      // Do not expose token in URL or logs. Use credentials 'omit' when Authorization header is used,
+      // otherwise rely on cookie-based auth with 'include'.
+      const res = await fetch(url, { headers, credentials: token ? 'omit' : 'include' })
+
+      if (res.status === 401 || res.status === 403) {
+        toast({ title: 'No autorizado', description: 'No tienes permisos para descargar este comprobante (401/403).', variant: 'destructive' })
+        return
+      }
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        const short = text ? (text.length > 200 ? text.slice(0, 200) + '...' : text) : ''
+        toast({ title: 'Error', description: `No se pudo descargar el PDF (${res.status}). ${short ? 'Detalle: ' + short : ''}`, variant: 'destructive' })
+        return
+      }
+
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = `comprobante-${id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(blobUrl)
+    } catch (err: any) {
+      toast({ title: 'Error', description: String(err?.message || err), variant: 'destructive' })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
   return (
     <Card className="border-none shadow-none bg-transparent">
       <CardContent className="space-y-2">
@@ -40,22 +88,26 @@ export function ComprobanteCard({ comprobante }: { comprobante: any }) {
         )}
         {comprobante.id && (
           <div>
-            <a
-              href={`${API_URL}/comprobantes/pdf/${comprobante.id}`}
-              target="_blank"
-              rel="noopener"
-              className="text-amber-700 underline text-sm"
+            <Button
+              type="button"
+              onClick={() => handleDownload(comprobante.id)}
+              disabled={isDownloading}
+              variant="outline"
+              size="sm"
+              aria-label={`Descargar comprobante ${comprobante.serie}-${comprobante.numero}`}
             >
-              Descargar PDF
-            </a>
+              {isDownloading ? (
+                <>
+                  <Spinner className="w-4 h-4" />
+                  <span>Descargando...</span>
+                </>
+              ) : (
+                <span>Descargar PDF</span>
+              )}
+            </Button>
           </div>
         )}
-        {comprobante.xml && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-stone-700 dark:text-stone-300 text-sm">Ver XML</summary>
-            <pre className="bg-stone-100 dark:bg-stone-800 rounded p-2 text-xs whitespace-pre-wrap">{comprobante.xml}</pre>
-          </details>
-        )}
+        {/* XML del comprobante ocultado por privacidad/UX */}
       </CardContent>
     </Card>
   )

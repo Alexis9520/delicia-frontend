@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ShoppingCart } from "lucide-react"
 import type { Product } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { formatCurrency } from "@/lib/currency"
 
 interface ProductCardProps {
   product: Product
@@ -51,7 +52,8 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
           </h3>
         </Link>
         <p className="text-sm text-yellow-800/70 line-clamp-2 mb-2">{product.description}</p>
-        <p className="text-3xl font-extrabold text-yellow-700 drop-shadow">${product.price.toFixed(2)}</p>
+        <p className="text-3xl font-extrabold text-yellow-700 drop-shadow">{formatCurrency(Number(product.price ?? 0))}</p>
+        <p className="mt-2 text-sm text-stone-600">Stock: <span className="font-medium text-stone-800">{Number(product.stock || 0)}</span></p>
       </CardContent>
       <CardFooter className="p-5 pt-0">
         <Button

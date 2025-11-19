@@ -1,27 +1,62 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { CartItem, Product } from "@/lib/types"
 
 export function useCart() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const cartRef = useRef<CartItem[]>([])
 
   useEffect(() => {
     try {
       const savedCart = typeof window !== "undefined" ? localStorage.getItem("cart") : null
-      if (savedCart) setCart(JSON.parse(savedCart))
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart)
+        setCart(parsed)
+        cartRef.current = parsed
+      }
     } catch {
       // si localStorage falla, seguimos con un carrito vacío
       setCart([])
+      cartRef.current = []
     } finally {
       setIsLoading(false)
     }
   }, [])
 
+  // Escuchar eventos externos 'cartUpdated' (otros componentes que manipulan localStorage)
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        const saved = typeof window !== "undefined" ? localStorage.getItem("cart") : null
+        if (saved) {
+          const parsed: CartItem[] = JSON.parse(saved)
+          // sólo actualizar si el contenido realmente cambió (evita bucles)
+          if (JSON.stringify(parsed) !== JSON.stringify(cartRef.current)) {
+            setCart(parsed)
+            cartRef.current = parsed
+          }
+        } else {
+          if (cartRef.current.length !== 0) {
+            setCart([])
+            cartRef.current = []
+          }
+        }
+      } catch {
+        // ignorar errores de parseo
+      }
+    }
+
+    window.addEventListener("cartUpdated", handler as EventListener)
+    return () => window.removeEventListener("cartUpdated", handler as EventListener)
+  }, [])
+
   useEffect(() => {
     if (!isLoading) {
       localStorage.setItem("cart", JSON.stringify(cart))
+      // Mantener referencia actualizada para evitar que el evento re-provoque actualizaciones locales
+      cartRef.current = cart
       // Notificar posibles listeners (microinteracciones)
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { count: getItemCount() } }))
     }
