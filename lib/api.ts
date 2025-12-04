@@ -23,7 +23,7 @@ function getAuthHeader(): Record<string, string> {
       }
     } catch (e) {
       // ignore
-    }
+    } 
     return hdr;
   }
   return {};
