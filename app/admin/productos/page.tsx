@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label"
 
 import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api"
-import { Pencil, Trash2, CheckCircle2, XCircle, ImageIcon, Upload, RefreshCw } from "lucide-react"
+import { Pencil, Trash2, CheckCircle2, XCircle, ImageIcon, Upload, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
 import { ChartContainer } from '@/components/ui/chart'
 import {
@@ -33,11 +33,12 @@ import {
   XAxis,
   YAxis,
   Tooltip as ReTooltip,
-  PieChart,
   Pie,
+  PieChart,
   Cell,
   ResponsiveContainer,
 } from 'recharts'
+import type { PaginatedResponse } from "@/lib/types"
 
 export interface Product {
   id?: string
@@ -69,19 +70,70 @@ export default function AdminProductsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalElements, setTotalElements] = useState(0)
+  const [stats, setStats] = useState({ available: 0, unavailable: 0 })
+  const [pageSize] = useState(10)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchProducts()
-  }, [])
+    fetchProducts(page)
+    fetchStats()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page])
 
-  const fetchProducts = async () => {
+  const fetchStats = async () => {
+    try {
+      // Workaround: Backend might not support filtering by 'available' yet.
+      // Fetch a large batch to calculate stats client-side accurately.
+      const res = await api.get<PaginatedResponse<Product>>("/products", { pageSize: 1000 })
+
+      const allProducts = res?.data || []
+      const total = res?.totalElements || allProducts.length
+      const available = allProducts.filter(p => p.available).length
+      // If totalElements > retrieved length, we might miss some, but this is better than nothing.
+      // Assuming 1000 is enough for now.
+
+      setStats({
+        available,
+        unavailable: allProducts.filter(p => !p.available).length
+      })
+
+      // Update total elements from this fetch too, just in case
+      if (res?.totalElements) setTotalElements(res.totalElements)
+
+    } catch (e) {
+      console.warn("Failed to fetch product stats", e)
+    }
+  }
+
+  const fetchProducts = async (currentPage = page) => {
     setIsLoading(true)
     try {
-      const response = await api.get("/products")
+      // Pass pagination params
+      const response = await api.get<PaginatedResponse<Product>>("/products", {
+        page: currentPage,
+        pageSize,
+        sort: "id,desc" // Consistent sorting
+      })
+
       const data = (response as any)?.data ?? response
-      setProducts(Array.isArray(data) ? data : [])
+
+      if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+        setProducts(response.data)
+        setTotalPages(response.totalPages || 1)
+        setTotalElements(response.totalElements || response.data.length)
+      } else if (Array.isArray(data)) {
+        setProducts(data)
+        setTotalPages(1) // Fallback for flat array
+        setTotalElements(data.length)
+      } else {
+        setProducts([])
+        setTotalPages(1)
+        setTotalElements(0)
+      }
     } catch (error) {
       // Mock de productos si falla el backend
       setProducts([
@@ -243,9 +295,11 @@ export default function AdminProductsPage() {
   }
 
   // KPIs
-  const totalProductos = products.length
-  const totalDisponibles = products.filter((p) => p.available).length
-  const totalNoDisponibles = products.filter((p) => !p.available).length
+  // Use server-provided total if available, otherwise array length
+  const totalProductos = totalElements || products.length
+  // Use fetched global stats if available (and non-zero ideally, or fallback to page calc)
+  const totalDisponibles = stats.available || products.filter((p) => p.available).length
+  const totalNoDisponibles = stats.unavailable || products.filter((p) => !p.available).length
 
   // Preview de imagen (archivo o URL)
   const imagePreview = imageFile ? URL.createObjectURL(imageFile) : form.image || ""
@@ -273,7 +327,7 @@ export default function AdminProductsPage() {
             <h1 className="text-balance text-4xl font-extrabold tracking-tight text-stone-900 drop-shadow-sm dark:text-stone-100">
               Gestión de Productos
             </h1>
-            <Button variant="outline" onClick={fetchProducts} className="rounded-xl" disabled={isLoading || isSubmitting}>
+            <Button variant="outline" onClick={() => fetchProducts(page)} className="rounded-xl" disabled={isLoading || isSubmitting}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Refrescar
             </Button>
@@ -492,13 +546,13 @@ export default function AdminProductsPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              <Button variant="outline" onClick={fetchProducts} className="rounded-xl" disabled={isLoading || isSubmitting}>
+              <Button variant="outline" onClick={() => fetchProducts(page)} className="rounded-xl" disabled={isLoading || isSubmitting}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refrescar
               </Button>
             </div>
 
-            
+
           </div>
 
           {/* Tabla de productos */}
@@ -583,6 +637,36 @@ export default function AdminProductsPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+              {/* Pagination Controls */}
+              {products.length > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-end gap-4 py-4">
+                  <span className="text-sm font-medium text-stone-600 dark:text-stone-400">
+                    Página {page} de {totalPages}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page <= 1 || isLoading}
+                      className="h-9 w-9 rounded-full"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="sr-only">Anterior</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages || isLoading}
+                      className="h-9 w-9 rounded-full"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                      <span className="sr-only">Siguiente</span>
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

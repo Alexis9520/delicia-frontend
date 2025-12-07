@@ -17,10 +17,11 @@ export interface Category {
 
 export interface PaginatedResponse<T> {
   data: T[]
-  total: number
+  totalElements: number
   page: number
   pageSize: number
   totalPages: number
+  hasNext: boolean
 }
 
 export interface CartItem extends Product {

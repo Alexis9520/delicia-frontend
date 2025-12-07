@@ -2,7 +2,7 @@
 // Cliente HTTP ligero usando fetch, compatible con los helpers existentes (get/post).
 // Base URL por defecto: http://localhost:8080/api (puedes sobrescribir con NEXT_PUBLIC_API_URL)
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://37.60.233.86:8080/api").replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://51.161.10.179:8080/api").replace(/\/+$/, "");
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO === "true";
 
 /**
@@ -23,7 +23,7 @@ function getAuthHeader(): Record<string, string> {
       }
     } catch (e) {
       // ignore
-    } 
+    }
     return hdr;
   }
   return {};
@@ -82,39 +82,22 @@ async function buildApiError(res: Response) {
   // Log para depuración en entorno de desarrollo
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     try {
-      // eslint-disable-next-line no-console
-      const safeHeaders = (() => {
-        try {
-          if (res && res.headers && typeof res.headers.entries === "function") {
-            return Object.fromEntries(res.headers.entries())
-          }
-        } catch (e) {
-          // fallthrough
-        }
-        try {
-          if (res && res.headers && typeof (res.headers as any).forEach === "function") {
-            const acc: Record<string, string> = {}
-            ;(res.headers as any).forEach((v: string, k: string) => (acc[k] = v))
-            return acc
-          }
-        } catch (e) {
-          // fallthrough
-        }
-        return {}
-      })()
-
-      // eslint-disable-next-line no-console
-      console.error("[api] HTTP error:", {
-        url: res?.url ?? "<unknown>",
-        status: res?.status ?? "<unknown>",
-        statusText: res?.statusText ?? "",
-        headers: safeHeaders,
-        rawText,
-        payload,
-      })
+      // Evitar logging excesivo para errores 4xx (client-side)
+      if (res.status >= 500) {
+        // eslint-disable-next-line no-console
+        console.error("[api] Server error:", {
+          url: res.url,
+          status: res.status,
+          statusText: res.statusText,
+          payload
+        })
+      } else {
+        // 4xx errors - usar warn o info
+        // eslint-disable-next-line no-console
+        console.warn(`[api] Client error ${res.status}: ${res.url}`, payload || rawText)
+      }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("[api] HTTP error (failed to build debug object):", e)
+      // ignore logging errors
     }
   }
 
@@ -164,7 +147,7 @@ export const api = {
    * - api.get("/products", { page: 1, pageSize: 50 })  <-- params object
    * - api.get("/path", { headers: {...} })             <-- RequestInit
    */
-  get: async (path: string, optionsOrParams: any = {}) => {
+  get: async <T = any>(path: string, optionsOrParams: any = {}) => {
     let options: RequestInit = {};
     let params: Record<string, any> | undefined = undefined;
 
@@ -190,14 +173,14 @@ export const api = {
       headers,
     });
     if (!res.ok) throw await buildApiError(res);
-    return parseResponse(res);
+    return parseResponse(res) as Promise<T>;
   },
 
   /**
    * POST genérico: envía JSON o FormData según el body.
    * Si body es un objeto plano lo convierte a JSON y añade Content-Type.
    */
-  post: async (path: string, body?: any, options: RequestInit = {}) => {
+  post: async <T = any>(path: string, body?: any, options: RequestInit = {}) => {
     let headersObj: Record<string, string> = {};
     let realBody: BodyInit | undefined;
 
@@ -230,10 +213,10 @@ export const api = {
       ...options,
     });
     if (!res.ok) throw await buildApiError(res);
-    return parseResponse(res);
+    return parseResponse(res) as Promise<T>;
   },
 
-  put: async (path: string, body?: any, options: RequestInit = {}) => {
+  put: async <T = any>(path: string, body?: any, options: RequestInit = {}) => {
     let headersObj: Record<string, string> = {};
     let realBody: BodyInit | undefined;
 
@@ -266,10 +249,10 @@ export const api = {
       ...options,
     });
     if (!res.ok) throw await buildApiError(res);
-    return parseResponse(res);
+    return parseResponse(res) as Promise<T>;
   },
 
-  delete: async (path: string, options: RequestInit = {}) => {
+  delete: async <T = any>(path: string, options: RequestInit = {}) => {
     const headersObj = mergeHeaders(options.headers, getAuthHeader());
     if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
       // eslint-disable-next-line no-console
@@ -285,7 +268,7 @@ export const api = {
       ...options,
     });
     if (!res.ok) throw await buildApiError(res);
-    return parseResponse(res);
+    return parseResponse(res) as Promise<T>;
   },
 };
 

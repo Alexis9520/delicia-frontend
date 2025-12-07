@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
-import { Package, Clock, Truck, CheckCircle, RefreshCw } from "lucide-react"
+import { Package, Clock, Truck, CheckCircle, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
 
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,49 +12,86 @@ import { OrderTableRow } from "@/components/worker/order-table-row"
 import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
-import type { Order } from "@/lib/types"
+import type { Order, PaginatedResponse } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import VentaMostradorModal from "@/components/worker/venta-mostrador-modal"
 import dynamic from "next/dynamic"
 
 const ProductionModal = dynamic(() => import("@/components/worker/production-modal"), { ssr: false })
 
-type TabKey = "todos" | "pendientes" | "en_preparacion" | "en_camino" | "completados" | "mostrador"
+type TabKey = "todos" | "pendiente" | "en_preparacion" | "en_camino" | "entregado" | "mostrador"
 
 export default function TrabajadorPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabKey>("todos")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  // Pagination
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [pageSize] = useState(10)
+
   const { toast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
   const [showVentaModal, setShowVentaModal] = useState(false)
   const [showProductionModal, setShowProductionModal] = useState(false)
 
   useEffect(() => {
-    fetchOrders()
+    // Reset page to 1 on tab change, then fetch
+    setPage(1)
+    fetchOrders(1, activeTab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  useEffect(() => {
+    fetchOrders(page, activeTab)
     return () => {
       abortRef.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [page])
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (currentPage = page, status: TabKey = activeTab) => {
     setIsLoading(true)
     abortRef.current?.abort()
     abortRef.current = new AbortController()
 
     try {
-      const response = await api.get("/orders/all")
-      const data = (response as any)?.data ?? response
-      setOrders(Array.isArray(data) ? data : [])
+      const params: any = {
+        page: currentPage,
+        pageSize,
+        sort: "id,desc"
+      }
+
+      if (status !== "todos") {
+        if (status === "mostrador") {
+          params.canal = "mostrador"
+        } else {
+          params.status = status
+        }
+      }
+
+      const response = await api.get<PaginatedResponse<Order>>("/orders/all", params)
+
+      if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+        setOrders(response.data)
+        setTotalPages(response.totalPages || 1)
+      } else if (Array.isArray(response)) {
+        setOrders(response)
+        setTotalPages(1) // Fallback
+      } else {
+        setOrders([])
+      }
+
       setLastUpdated(new Date())
     } catch (error) {
+      console.error(error)
       setOrders([])
       setLastUpdated(new Date())
       toast({
-        title: "Modo demostración",
-        description: "No se pudo cargar desde el servidor. Mostrando datos de ejemplo.",
+        title: "Error de carga",
+        description: "No se pudieron cargar los pedidos.",
       })
     } finally {
       setIsLoading(false)
@@ -82,63 +119,46 @@ export default function TrabajadorPage() {
     }
   }
 
-  // Filtro para canal de venta
-  const filteredOrders = useMemo(() => {
-    switch (activeTab) {
-      case "pendientes":
-        return orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador")
-      case "en_preparacion":
-        return orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador")
-      case "en_camino":
-        return orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador")
-      case "completados":
-        return orders.filter((o) => o.status === "entregado" && o.canal !== "mostrador")
-      case "mostrador":
-        return orders.filter((o) => o.canal === "mostrador")
-      default:
-        return orders
-    }
-  }, [activeTab, orders])
+  // No filteredOrders useMemo anymore because orders are already filtered by server
 
-  const stats = useMemo(
-    () => [
-      {
-        title: "Pendientes",
-        value: orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador").length,
-        icon: Clock,
-        color: "text-amber-600",
-      },
-      {
-        title: "En Preparación",
-        value: orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador").length,
-        icon: Package,
-        color: "text-orange-600",
-      },
-      {
-        title: "En Camino",
-        value: orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador").length,
-        icon: Truck,
-        color: "text-sky-600",
-      },
-      {
-        title: "Completados Hoy",
-        value: orders.filter(
-          (o) => o.status === "entregado" && o.canal !== "mostrador" && new Date(o.updatedAt).toDateString() === new Date().toDateString(),
-        ).length,
-        icon: CheckCircle,
-        color: "text-emerald-600",
-      },
-      {
-        title: "Ventas mostrador hoy",
-        value: orders.filter(
-          (o) => o.canal === "mostrador" && new Date(o.updatedAt).toDateString() === new Date().toDateString()
-        ).length,
-        icon: Package,
-        color: "text-pink-600",
-      },
-    ],
-    [orders],
-  )
+  // Removed detailed "Stats" calculation based on local array since we only have one page.
+  // We can't accurately show "Pendientes (5)" if we don't have all data.
+  // For the Stats cards at top, we would need a separate API call api.get('/orders/stats').
+  // Assuming we don't have that yet, we will hide the specific counts or show dashes.
+
+  // Removed filteredOrders useMemo and detailed stats due to server-side pagination
+  const stats = [
+    {
+      title: "Pendientes",
+      value: activeTab === 'pendiente' ? orders.length : "-",
+      icon: Clock,
+      color: "text-amber-600",
+    },
+    {
+      title: "En Preparación",
+      value: activeTab === 'en_preparacion' ? orders.length : "-",
+      icon: Package,
+      color: "text-orange-600",
+    },
+    {
+      title: "En Camino",
+      value: activeTab === 'en_camino' ? orders.length : "-",
+      icon: Truck,
+      color: "text-sky-600",
+    },
+    {
+      title: "Completados",
+      value: activeTab === 'entregado' ? orders.length : "-",
+      icon: CheckCircle,
+      color: "text-emerald-600",
+    },
+    {
+      title: "Ventas mostrador",
+      value: activeTab === 'mostrador' ? orders.length : "-",
+      icon: Package,
+      color: "text-pink-600",
+    },
+  ]
 
   if (isLoading) {
     return (
@@ -173,10 +193,33 @@ export default function TrabajadorPage() {
                   </span>
                 </p>
               )}
-              <Button onClick={fetchOrders} variant="outline" className="rounded-xl">
+              <Button onClick={() => fetchOrders(1, activeTab)} variant="outline" className="rounded-xl">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refrescar
               </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isLoading}
+                  className="h-10 w-10 rounded-xl"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isLoading}
+                  className="h-10 w-10 rounded-xl"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
               <Button onClick={() => setShowVentaModal(true)} variant="brand" className="rounded-xl">
                 Registrar venta mostrador
               </Button>
@@ -209,26 +252,16 @@ export default function TrabajadorPage() {
             <CardContent>
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
                 <TabsList className="mb-4">
-                  <TabsTrigger value="todos">Todos ({orders.length})</TabsTrigger>
-                  <TabsTrigger value="pendientes">
-                    Pendientes ({orders.filter((o) => o.status === "pendiente" && o.canal !== "mostrador").length})
-                  </TabsTrigger>
-                  <TabsTrigger value="en_preparacion">
-                    En Preparación ({orders.filter((o) => o.status === "en_preparacion" && o.canal !== "mostrador").length})
-                  </TabsTrigger>
-                  <TabsTrigger value="en_camino">
-                    En Camino ({orders.filter((o) => o.status === "en_camino" && o.canal !== "mostrador").length})
-                  </TabsTrigger>
-                  <TabsTrigger value="completados">
-                    Completados ({orders.filter((o) => o.status === "entregado" && o.canal !== "mostrador").length})
-                  </TabsTrigger>
-                  <TabsTrigger value="mostrador">
-                    Mostrador ({orders.filter((o) => o.canal === "mostrador").length})
-                  </TabsTrigger>
+                  <TabsTrigger value="todos">Todos</TabsTrigger>
+                  <TabsTrigger value="pendiente">Pendientes</TabsTrigger>
+                  <TabsTrigger value="en_preparacion">En Preparación</TabsTrigger>
+                  <TabsTrigger value="en_camino">En Camino</TabsTrigger>
+                  <TabsTrigger value="entregado">Completados</TabsTrigger>
+                  <TabsTrigger value="mostrador">Mostrador</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value={activeTab}>
-                  {filteredOrders.length === 0 ? (
+                  {orders.length === 0 ? (
                     <p className="py-10 text-center text-stone-500 dark:text-stone-400">
                       No hay pedidos en esta categoría
                     </p>
@@ -249,7 +282,7 @@ export default function TrabajadorPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredOrders.map((order) => (
+                          {orders.map((order) => (
                             <OrderTableRow key={order.id} order={order} onStatusChange={handleStatusChange} />
                           ))}
                         </TableBody>
@@ -276,6 +309,6 @@ export default function TrabajadorPage() {
           />
         )}
       </main>
-    </ProtectedRoute>
+    </ProtectedRoute >
   )
 }

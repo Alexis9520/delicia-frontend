@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Mail, Phone, Edit2, Trash2, Key, Eye, RefreshCw, UserPlus, Search } from "lucide-react"
+import { useEffect, useMemo, useState, useCallback } from "react"
+import { Mail, Phone, Edit2, Trash2, Key, Eye, RefreshCw, UserPlus, Search, ChevronLeft, ChevronRight } from "lucide-react"
 
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,13 +23,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api"
-import type { User } from "@/lib/types"
+import type { User, PaginatedResponse } from "@/lib/types"
 import { formatCurrency } from "@/lib/currency"
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
+
+  // Pagination
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [pageSize] = useState(10)
 
   // Crear usuario
   const [registerForm, setRegisterForm] = useState({
@@ -69,29 +74,54 @@ export default function AdminUsersPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Debounce de búsqueda
+  // Debounce de búsqueda
   useEffect(() => {
     const t = setTimeout(() => {
-      fetchUsers()
+      // Reset page to 1 when filters change
+      setPage(1)
+      fetchUsers(1)
     }, 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleFilter, search])
 
-  useEffect(() => {
-    fetchUsers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Fetch on page change (skip initial mount as the debounce effect covers it or we handle it intentionally)
+  // Actually, we need to handle page changes. But if we put page in dependency of fetchUsers effect, we need to distinguish between filter change (page 1) and page nav.
+  // We can just rely on the effect above for filters-triggered fetch, and a separate handler for pagination.
 
-  const fetchUsers = async () => {
+  // Initial load
+  useEffect(() => {
+    fetchUsers(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // We can leave this empty or remove if the debounce effect runs on mount (it does). 
+  // But let's be explicit and allow pagination effect.
+
+  // Pagination effect: if page changes and it's not due to filter reset (which sets page 1), we want to fetch.
+  // Simpler approach: define fetchUsers to take page arg.
+
+  const fetchUsers = async (currentPage = page) => {
     setIsLoading(true)
     try {
       const params = new URLSearchParams()
       // Solo enviar role si no es "all"
       if (roleFilter !== "all") params.append("role", roleFilter)
       if (search) params.append("search", search)
-      const response = await api.get(`/users?${params.toString()}`)
-      const data = (response as any)?.data ?? response
-      setUsers(Array.isArray(data) ? data : [])
+
+      params.append("page", currentPage.toString())
+      params.append("pageSize", pageSize.toString())
+
+      const response = await api.get<PaginatedResponse<User>>(`/users?${params.toString()}`)
+
+      if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+        setUsers(response.data)
+        setTotalPages(response.totalPages || 1)
+        setPage(currentPage) // Ensure state sync
+      } else if (Array.isArray(response)) {
+        setUsers(response)
+        setTotalPages(1)
+      } else {
+        setUsers([])
+      }
     } catch (error) {
       // Mock si backend falla
       setUsers([
@@ -136,7 +166,7 @@ export default function AdminUsersPage() {
 
   const refresh = () => {
     setIsRefreshing(true)
-    fetchUsers()
+    fetchUsers(page)
   }
 
   // Cambiar rol de usuario
@@ -622,6 +652,43 @@ export default function AdminUsersPage() {
             </CardContent>
           </Card>
 
+          {/* Pagination Controls */}
+          {users.length > 0 && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  const p = Math.max(1, page - 1)
+                  setPage(p)
+                  fetchUsers(p)
+                }}
+                disabled={page <= 1 || isLoading}
+                className="h-10 w-10 rounded-full"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="sr-only">Anterior</span>
+              </Button>
+              <span className="text-sm font-medium text-stone-600 dark:text-stone-400">
+                Página {page} de {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  const p = Math.min(totalPages, page + 1)
+                  setPage(p)
+                  fetchUsers(p)
+                }}
+                disabled={page >= totalPages || isLoading}
+                className="h-10 w-10 rounded-full"
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="sr-only">Siguiente</span>
+              </Button>
+            </div>
+          )}
+
           {/* Modal de edición */}
           {showEditModal && (
             <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm">
@@ -722,8 +789,8 @@ export default function AdminUsersPage() {
                           {item.fecha
                             ? new Date(item.fecha).toLocaleString("es-PE")
                             : item.createdAt
-                            ? new Date(item.createdAt).toLocaleString("es-PE")
-                            : "-"}
+                              ? new Date(item.createdAt).toLocaleString("es-PE")
+                              : "-"}
                         </p>
                         {typeof item.total === "number" && (
                           <p className="text-sm">Total: {formatCurrency(item.total)}</p>
